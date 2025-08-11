@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Brain, Toggle, ChevronRight, Users, Zap } from "lucide-react";
+import { Brain, ChevronRight, Users, Zap } from "lucide-react";
 import * as Switch from "@radix-ui/react-switch";
 import { cn } from "@/lib/utils";
 

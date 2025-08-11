@@ -15,10 +15,12 @@ interface Message {
 
 interface AgentContribution {
   name: string;
+  domain: string;
   expertise: string;
   contribution: string;
   confidence: number;
   sources?: string[];
+  tokensUsed?: number;
 }
 
 export function ChatInterface() {

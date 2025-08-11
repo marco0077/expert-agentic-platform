@@ -1,22 +1,69 @@
+import { OpenAIService, LLMResponse } from '../services/OpenAIService';
+import { SYSTEM_PROMPTS } from '../data/systemPrompts';
+import { EXPERTISE_DATABASE } from '../data/expertiseDatabase';
+
 export interface ExpertResponse {
   content: string;
   confidence: number;
   sources?: string[];
+  tokensUsed?: number;
+  agentDomain: string;
 }
 
 export abstract class ExpertAgent {
   protected name: string;
+  protected domain: string;
   protected expertise: string;
   protected confidence: number = 0;
   protected currentQuery: string = '';
+  protected openAIService: OpenAIService;
 
-  constructor(name: string, expertise: string) {
+  constructor(name: string, domain: string, expertise: string) {
     this.name = name;
+    this.domain = domain;
     this.expertise = expertise;
+    this.openAIService = new OpenAIService();
   }
 
   abstract assessRelevance(query: string): Promise<number>;
-  abstract generateResponse(): Promise<ExpertResponse>;
+  
+  async generateResponse(): Promise<ExpertResponse> {
+    if (!this.currentQuery) {
+      throw new Error('No query set for agent response generation');
+    }
+
+    try {
+      const systemPrompt = SYSTEM_PROMPTS[this.domain];
+      if (!systemPrompt) {
+        throw new Error(`No system prompt found for domain: ${this.domain}`);
+      }
+
+      const llmResponse: LLMResponse = await this.openAIService.generateResponse(
+        systemPrompt,
+        this.currentQuery,
+        0.7, // temperature for balanced creativity/consistency
+        1500 // max tokens for detailed responses
+      );
+
+      return {
+        content: llmResponse.content,
+        confidence: this.confidence,
+        sources: this.generateSources(this.domain),
+        tokensUsed: llmResponse.tokensUsed,
+        agentDomain: this.domain
+      };
+
+    } catch (error) {
+      console.error(`Error generating response for ${this.name}:`, error);
+      return {
+        content: `I apologize, but I'm experiencing technical difficulties generating a response. Please try again later.`,
+        confidence: 0.1,
+        sources: [],
+        tokensUsed: 0,
+        agentDomain: this.domain
+      };
+    }
+  }
 
   getName(): string {
     return this.name;
@@ -30,18 +77,115 @@ export abstract class ExpertAgent {
     return this.confidence;
   }
 
+  async processQuery(query: string): Promise<ExpertResponse> {
+    this.currentQuery = query;
+    this.confidence = await this.assessRelevance(query);
+    return await this.generateResponse();
+  }
+
   protected setCurrentQuery(query: string): void {
     this.currentQuery = query;
   }
 
-  protected calculateRelevance(query: string, keywords: string[]): number {
+  protected async calculateRelevance(query: string): Promise<number> {
+    const expertiseData = EXPERTISE_DATABASE[this.domain];
+    if (!expertiseData) {
+      return 0.3; // Default relevance if no expertise data found
+    }
+
+    try {
+      // Use semantic relevance calculation via OpenAI
+      const semanticRelevance = await this.calculateSemanticRelevance(query, expertiseData);
+      
+      // Fallback to keyword matching if OpenAI fails
+      if (semanticRelevance > 0) {
+        return semanticRelevance;
+      }
+    } catch (error) {
+      console.warn(`Semantic relevance calculation failed for ${this.domain}:`, error);
+    }
+    
+    // Fallback to improved keyword matching
+    return this.calculateKeywordRelevance(query, expertiseData);
+  }
+
+  private async calculateSemanticRelevance(query: string, expertiseData: any): Promise<number> {
+    const relevancePrompt = `
+    Analyze how relevant this query is to the given domain expertise on a scale of 0.0 to 1.0.
+
+    Query: "${query}"
+    
+    Domain: ${expertiseData.domain}
+    Expertise Areas: ${expertiseData.expertise.join(', ')}
+    Specializations: ${expertiseData.specializations.join(', ')}
+    Description: ${expertiseData.description}
+
+    Consider:
+    - Direct topic matches (1.0)
+    - Related concepts and synonyms (0.6-0.9)
+    - Tangentially related topics (0.3-0.6)
+    - Unrelated topics (0.0-0.2)
+
+    Respond with only a number between 0.0 and 1.0:`;
+
+    try {
+      const response = await this.openAIService.generateResponse(
+        "You are a domain expertise analyzer. Respond only with a decimal number between 0.0 and 1.0.",
+        relevancePrompt,
+        0.1, // Low temperature for consistent scoring
+        50   // Short response
+      );
+
+      const relevanceScore = parseFloat(response.content.trim());
+      
+      // Validate the response
+      if (!isNaN(relevanceScore) && relevanceScore >= 0 && relevanceScore <= 1) {
+        return relevanceScore;
+      }
+    } catch (error) {
+      console.warn(`OpenAI relevance calculation failed:`, error);
+    }
+
+    return 0; // Return 0 to trigger fallback
+  }
+
+  private calculateKeywordRelevance(query: string, expertiseData: any): number {
     const lowerQuery = query.toLowerCase();
-    const matches = keywords.filter(keyword => 
-      lowerQuery.includes(keyword.toLowerCase())
-    );
+    const allKeywords = [
+      ...expertiseData.relevanceKeywords,
+      ...expertiseData.expertise.map((e: string) => e.toLowerCase()),
+      ...expertiseData.specializations.map((s: string) => s.toLowerCase())
+    ];
+
+    // More flexible keyword matching
+    let matchScore = 0;
+    const totalKeywords = allKeywords.length;
     
-    const baseRelevance = matches.length / keywords.length;
+    for (const keyword of allKeywords) {
+      const keywordLower = keyword.toLowerCase();
+      
+      // Exact match
+      if (lowerQuery.includes(keywordLower)) {
+        matchScore += 1;
+        continue;
+      }
+      
+      // Partial matches for compound words
+      const queryWords = lowerQuery.split(/\s+/);
+      const keywordWords = keywordLower.split(/\s+/);
+      
+      for (const queryWord of queryWords) {
+        for (const keywordWord of keywordWords) {
+          if (queryWord.length > 3 && keywordWord.includes(queryWord)) {
+            matchScore += 0.5;
+          } else if (keywordWord.length > 3 && queryWord.includes(keywordWord)) {
+            matchScore += 0.5;
+          }
+        }
+      }
+    }
     
+    const baseRelevance = Math.min((matchScore / totalKeywords) * 2, 0.8);
     const complexityBonus = this.assessQueryComplexity(query) * 0.2;
     
     return Math.min(baseRelevance + complexityBonus, 1);
@@ -55,34 +199,74 @@ export abstract class ExpertAgent {
     return matches.length / complexTerms.length;
   }
 
-  protected generateSources(topic: string): string[] {
-    const domains = {
+  protected generateSources(domain: string): string[] {
+    const domainSources = {
       'psychology': [
-        'https://www.apa.org',
-        'https://www.ncbi.nlm.nih.gov/pmc',
-        'https://psycnet.apa.org'
+        'American Psychological Association (APA)',
+        'Journal of Experimental Psychology',
+        'Psychological Science',
+        'Clinical Psychology Review'
       ],
-      'economics': [
-        'https://www.investopedia.com',
-        'https://www.imf.org',
-        'https://www.worldbank.org'
+      'economy': [
+        'International Monetary Fund (IMF)',
+        'World Bank Economic Research',
+        'Journal of Economic Perspectives',
+        'American Economic Review'
       ],
-      'science': [
-        'https://www.nature.com',
-        'https://www.science.org',
-        'https://www.ncbi.nlm.nih.gov'
+      'finance': [
+        'Journal of Finance',
+        'Financial Analysts Journal',
+        'CFA Institute Research',
+        'Federal Reserve Economic Data'
       ],
-      'technology': [
-        'https://arxiv.org',
-        'https://ieeexplore.ieee.org',
-        'https://dl.acm.org'
+      'architecture': [
+        'Architectural Review',
+        'Journal of Architecture',
+        'Green Building Council',
+        'Urban Design International'
+      ],
+      'engineering': [
+        'IEEE Xplore Digital Library',
+        'ASME Journals',
+        'Engineering Science and Technology',
+        'Nature Engineering'
+      ],
+      'design': [
+        'Design Studies Journal',
+        'International Journal of Design',
+        'ACM Digital Library - HCI',
+        'UX Research Methods'
+      ],
+      'life-sciences': [
+        'Nature Medicine',
+        'Science Translational Medicine',
+        'Cell Biology International',
+        'Journal of Biomedical Science'
+      ],
+      'mathematics': [
+        'Journal of Mathematical Analysis',
+        'Mathematical Statistics',
+        'Applied Mathematics Research',
+        'Statistical Science'
+      ],
+      'physics': [
+        'Physical Review Letters',
+        'Nature Physics',
+        'Journal of Physics',
+        'American Physical Society'
+      ],
+      'philosophy': [
+        'Journal of Philosophy',
+        'Ethics and Moral Philosophy',
+        'Philosophical Studies',
+        'Stanford Encyclopedia of Philosophy'
       ]
     };
 
-    const relevantDomain = Object.keys(domains).find(domain => 
-      this.expertise.toLowerCase().includes(domain)
-    );
-
-    return relevantDomain ? domains[relevantDomain as keyof typeof domains] || [] : [];
+    return domainSources[domain as keyof typeof domainSources] || [
+      'Academic Research Database',
+      'Peer-reviewed Publications',
+      'Expert Analysis'
+    ];
   }
 }

@@ -9,6 +9,8 @@ import { LifeSciencesAgent } from './experts/LifeSciencesAgent';
 import { MathematicsAgent } from './experts/MathematicsAgent';
 import { PhysicsAgent } from './experts/PhysicsAgent';
 import { PhilosophyAgent } from './experts/PhilosophyAgent';
+import { OpenAIService } from '../services/OpenAIService';
+import { EXPERTISE_DATABASE } from '../data/expertiseDatabase';
 
 export interface QueryAnalysis {
   relevantDomains: string[];
@@ -25,10 +27,12 @@ export interface AgentResponse {
 
 export interface AgentContribution {
   name: string;
+  domain: string;
   expertise: string;
   contribution: string;
   confidence: number;
   sources?: string[];
+  tokensUsed?: number;
 }
 
 export interface UserProfile {
@@ -40,10 +44,15 @@ export interface UserProfile {
 
 export class OrchestratorAgent {
   private experts: Map<string, ExpertAgent>;
-  private readonly minConfidenceThreshold = 0.3;
+  private readonly minConfidenceThreshold = 0.2; // Lowered threshold for better coverage
+  private openAIService: OpenAIService;
+  private currentQuery: string = '';
 
   constructor() {
     this.experts = new Map<string, ExpertAgent>();
+    this.openAIService = new OpenAIService();
+    
+    // Initialize all expert agents
     this.experts.set('psychology', new PsychologyAgent());
     this.experts.set('economy', new EconomyAgent());
     this.experts.set('finance', new FinanceAgent());
@@ -57,31 +66,50 @@ export class OrchestratorAgent {
   }
 
   async processQuery(query: string, userProfile?: UserProfile): Promise<QueryAnalysis> {
-    const relevantDomains = await this.identifyRelevantDomains(query);
-    const complexity = this.assessComplexity(query);
+    // Store the current query for later use in response generation
+    this.currentQuery = query;
+    
+    // Use OpenAI to analyze the query intelligently
+    const aiAnalysis = await this.openAIService.analyzeQuery(query);
+    
+    // Get relevant domains based on expertise database and AI analysis
+    const relevantDomains = await this.identifyRelevantDomains(query, aiAnalysis.suggestedAgents);
+    const complexity = aiAnalysis.complexity;
     const activeAgents: ExpertAgent[] = [];
 
+    // Evaluate each relevant domain
+    console.log(`Processing ${relevantDomains.length} relevant domains:`, relevantDomains);
+    
     for (const domain of relevantDomains) {
       const agent = this.experts.get(domain);
       if (agent) {
         const relevance = await agent.assessRelevance(query);
+        console.log(`${domain} agent relevance: ${relevance}, threshold: ${this.minConfidenceThreshold}`);
+        
         if (relevance >= this.minConfidenceThreshold) {
-          
+          // Check if user has this agent activated
           if (!userProfile?.activeAgents || 
               userProfile.activeAgents.includes(domain)) {
+            console.log(`Adding ${domain} agent to active agents`);
             activeAgents.push(agent);
+          } else {
+            console.log(`${domain} agent not activated in user profile`);
           }
         }
+      } else {
+        console.log(`No agent found for domain: ${domain}`);
       }
     }
 
+    // Sort by confidence and limit to top performers
     activeAgents.sort((a, b) => b.getConfidence() - a.getConfidence());
+    const topAgents = activeAgents.slice(0, Math.min(5, activeAgents.length));
 
     return {
       relevantDomains,
       complexity,
-      requiredExpertise: activeAgents.map(agent => agent.getExpertise()),
-      activeAgents: activeAgents.slice(0, 5)
+      requiredExpertise: topAgents.map(agent => agent.getExpertise()),
+      activeAgents: topAgents
     };
   }
 
@@ -91,13 +119,15 @@ export class OrchestratorAgent {
 
     for (const agent of analysis.activeAgents) {
       try {
-        const response = await agent.generateResponse();
+        const response = await agent.processQuery(this.currentQuery);
         contributions.push({
           name: agent.getName(),
+          domain: response.agentDomain || 'unknown',
           expertise: agent.getExpertise(),
           contribution: response.content,
           confidence: Math.round(agent.getConfidence() * 100),
-          sources: response.sources
+          sources: response.sources,
+          tokensUsed: response.tokensUsed
         });
         
         if (response.sources) {
@@ -117,47 +147,58 @@ export class OrchestratorAgent {
     };
   }
 
-  private async identifyRelevantDomains(query: string): Promise<string[]> {
+  private async identifyRelevantDomains(query: string, suggestedAgents?: string[]): Promise<string[]> {
     const lowerQuery = query.toLowerCase();
     const domains: string[] = [];
+    
+    // Start with AI-suggested agents if available
+    if (suggestedAgents && suggestedAgents.length > 0) {
+      domains.push(...suggestedAgents);
+    }
 
-    const domainKeywords = {
-      psychology: ['psychology', 'mental', 'behavior', 'cognitive', 'emotion', 'therapy', 'mind'],
-      economy: ['economy', 'economic', 'market', 'gdp', 'inflation', 'recession', 'policy'],
-      finance: ['finance', 'investment', 'money', 'portfolio', 'stock', 'trading', 'wealth'],
-      architecture: ['architecture', 'building', 'design', 'construction', 'urban', 'planning'],
-      engineering: ['engineering', 'technical', 'system', 'software', 'mechanical', 'electrical'],
-      design: ['design', 'user', 'interface', 'experience', 'visual', 'creative', 'aesthetic'],
-      'life-sciences': ['biology', 'medical', 'health', 'genetic', 'dna', 'cell', 'organism'],
-      mathematics: ['math', 'calculation', 'statistics', 'probability', 'algorithm', 'formula'],
-      physics: ['physics', 'quantum', 'energy', 'force', 'particle', 'relativity', 'mechanics'],
-      philosophy: ['philosophy', 'ethics', 'moral', 'meaning', 'existence', 'logic', 'metaphysics']
-    };
-
-    for (const [domain, keywords] of Object.entries(domainKeywords)) {
-      if (keywords.some(keyword => lowerQuery.includes(keyword))) {
-        domains.push(domain);
+    // Use expertise database for comprehensive matching
+    for (const [domain, expertise] of Object.entries(EXPERTISE_DATABASE)) {
+      if (!domains.includes(domain)) {
+        const relevanceKeywords = expertise.relevanceKeywords || [];
+        const domainKeywords = expertise.expertise.map(e => e.toLowerCase()) || [];
+        const allKeywords = [...relevanceKeywords, ...domainKeywords];
+        
+        // Check for keyword matches
+        const matchCount = allKeywords.filter(keyword => 
+          lowerQuery.includes(keyword.toLowerCase())
+        ).length;
+        
+        // Add domain if it has sufficient keyword matches
+        if (matchCount > 0) {
+          domains.push(domain);
+        }
       }
     }
 
+    // Fallback to general-purpose agents if no matches
     if (domains.length === 0) {
       return ['psychology', 'philosophy'];
     }
 
-    return domains;
+    // Remove duplicates and limit to most relevant
+    return [...new Set(domains)].slice(0, 6);
   }
 
   private assessComplexity(query: string): number {
     const complexityIndicators = [
       'analyze', 'compare', 'evaluate', 'synthesize', 'complex', 'multiple',
-      'relationship', 'interaction', 'comprehensive', 'detailed'
+      'relationship', 'interaction', 'comprehensive', 'detailed', 'explain',
+      'how', 'why', 'integrate', 'relationship', 'impact', 'implications'
     ];
 
     const matches = complexityIndicators.filter(indicator => 
       query.toLowerCase().includes(indicator)
     );
 
-    return Math.min(matches.length / complexityIndicators.length, 1);
+    const baseComplexity = Math.min(matches.length / complexityIndicators.length, 0.8);
+    const lengthBonus = Math.min(query.length / 200, 0.2); // Longer queries tend to be more complex
+    
+    return Math.min(baseComplexity + lengthBonus, 1);
   }
 
   private async synthesizeResponses(contributions: AgentContribution[]): Promise<string> {

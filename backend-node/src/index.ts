@@ -6,12 +6,12 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 
+// Configure dotenv first before importing other modules
+dotenv.config();
+
 import { chatRouter } from './routes/chat';
 import { userRouter } from './routes/user';
 import { agentsRouter } from './routes/agents';
-import { OrchestratorAgent } from './agents/OrchestratorAgent';
-
-dotenv.config();
 
 const app = express();
 const server = createServer(app);
@@ -33,8 +33,6 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-const orchestrator = new OrchestratorAgent();
-
 app.use('/api/chat', chatRouter);
 app.use('/api/users', userRouter);
 app.use('/api/agents', agentsRouter);
@@ -49,30 +47,6 @@ app.get('/api/health', (req, res) => {
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
-
-  socket.on('chat-message', async (data) => {
-    try {
-      const result = await orchestrator.processQuery(data.message, data.userProfile);
-      
-      socket.emit('agent-thinking', { 
-        agents: result.activeAgents,
-        status: 'processing'
-      });
-
-      const response = await orchestrator.generateResponse(result);
-      
-      socket.emit('chat-response', {
-        response: response.content,
-        agents: response.contributions,
-        sources: response.sources
-      });
-    } catch (error) {
-      console.error('Chat processing error:', error);
-      socket.emit('chat-error', { 
-        message: 'Sorry, I encountered an error processing your request.' 
-      });
-    }
-  });
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
