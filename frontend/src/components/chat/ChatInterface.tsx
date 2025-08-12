@@ -10,6 +10,7 @@ interface Message {
   type: "user" | "system";
   content: string;
   timestamp: Date;
+  sources?: string[];
   agents?: AgentContribution[];
 }
 
@@ -67,6 +68,7 @@ export function ChatInterface() {
         type: "system",
         content: data.response || "I apologize, but I couldn't process your request at the moment.",
         timestamp: new Date(),
+        sources: data.sources || [],
         agents: data.agents || [],
       };
 

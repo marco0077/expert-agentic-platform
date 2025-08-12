@@ -66,18 +66,26 @@ export function AgentVisualization({ agents }: AgentVisualizationProps) {
 
             {agent.sources && agent.sources.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {agent.sources.map((source, sourceIndex) => (
-                  <a
-                    key={sourceIndex}
-                    href={source}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Source {sourceIndex + 1}
-                  </a>
-                ))}
+                {agent.sources.map((source, sourceIndex) => {
+                  // Parse source format "Title - URL" or just use URL
+                  const [title, url] = source.includes(' - ') ? source.split(' - ', 2) : [null, source];
+                  const displayTitle = title || `Source ${sourceIndex + 1}`;
+                  const linkUrl = url || source;
+                  
+                  return (
+                    <a
+                      key={sourceIndex}
+                      href={linkUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                      title={linkUrl}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      {displayTitle}
+                    </a>
+                  );
+                })}
               </div>
             )}
           </div>

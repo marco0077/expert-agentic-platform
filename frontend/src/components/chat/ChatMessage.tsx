@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Bot } from "lucide-react";
+import { User, Bot, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -8,6 +8,7 @@ interface Message {
   type: "user" | "system";
   content: string;
   timestamp: Date;
+  sources?: string[];
 }
 
 interface ChatMessageProps {
@@ -35,6 +36,36 @@ export function ChatMessage({ message }: ChatMessageProps) {
         <p className="text-sm leading-relaxed whitespace-pre-wrap">
           {message.content}
         </p>
+        
+        {/* Display sources for system messages */}
+        {!isUser && message.sources && message.sources.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <p className="text-xs font-medium text-gray-600 mb-2">Sources:</p>
+            <div className="flex flex-wrap gap-2">
+              {message.sources.map((source, sourceIndex) => {
+                // Parse source format "Title - URL" or just use URL
+                const [title, url] = source.includes(' - ') ? source.split(' - ', 2) : [null, source];
+                const displayTitle = title || `Source ${sourceIndex + 1}`;
+                const linkUrl = url || source;
+                
+                return (
+                  <a
+                    key={sourceIndex}
+                    href={linkUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline bg-white px-2 py-1 rounded border"
+                    title={linkUrl}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    {displayTitle}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        
         <p className={cn(
           "text-xs mt-2 opacity-70",
           isUser ? "text-blue-100" : "text-gray-500"

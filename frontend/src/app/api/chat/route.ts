@@ -38,14 +38,14 @@ export async function POST(request: NextRequest) {
         expertise: "Psychology",
         contribution: "From a psychological perspective, this question involves understanding human cognition and behavior patterns. The way we process information and make decisions is influenced by cognitive biases, emotional states, and past experiences.",
         confidence: 85,
-        sources: ["https://www.apa.org", "https://psycnet.apa.org"]
+        sources: [] // No mock sources - only use LLM-validated ones
       },
       {
         name: "Philosophy Expert", 
         expertise: "Philosophy",
         contribution: "Philosophically, this raises important questions about the nature of knowledge, truth, and human understanding. We must consider both epistemological and ethical dimensions when examining this topic.",
         confidence: 78,
-        sources: ["https://plato.stanford.edu"]
+        sources: [] // No mock sources - only use LLM-validated ones
       }
     ];
 
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       response: mockResponse,
       agents: mockAgents,
-      sources: ["https://www.apa.org", "https://psycnet.apa.org", "https://plato.stanford.edu"],
+      sources: [], // No mock sources in fallback - only show LLM-generated validated sources
       metadata: {
         queryComplexity: 0.7,
         activeAgentCount: 2,

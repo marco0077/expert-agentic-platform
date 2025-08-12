@@ -22,12 +22,29 @@ Since this is an empty project, development commands will need to be established
 
 ## Architecture Notes
 
-The project structure and architecture are yet to be defined. This section should be updated as the codebase develops to include:
+### Expert Agent System
+The platform implements a multi-agent architecture with specialized expert agents:
 
-- High-level system architecture
-- Key design patterns and conventions
-- Module organization principles
-- Data flow patterns
+- **Base Agent Class**: Abstract base class with MCP search integration
+- **Specialized Agents**: Data Scientist, Researcher, Business Analyst
+- **Orchestrator Agent**: Coordinates multiple specialists for complex queries
+- **Search Integration**: All agents can access real-time web data via MCP server
+
+### Unified MCP Search Integration
+All agents across both Python and Node.js backends share intelligent web search capabilities:
+- **Shared MCP Server**: Single `mcp-search-server` instance serves both backends
+- **LLM-Based Search Decisions**: Intelligent determination using semantic analysis instead of keywords
+- **Language-Specific Clients**: Python and TypeScript clients for optimal integration
+- **Consistent Search Behavior**: Same decision logic and result formatting across backends
+- **Smart Context Enhancement**: Search results intelligently integrated with expert knowledge
+- **Quality Control**: Limited to top 3 results, clearly marked by search type
+- See `/backend-python/docs/MCP_SEARCH_GUIDELINES.md` for detailed usage guidelines
+
+### Key Design Patterns
+- **Expert Selection**: Agents self-assess relevance and coordinate responses
+- **Async Processing**: Non-blocking specialist coordination
+- **Search-Enhanced Responses**: Dynamic integration of current information
+- **Modular Architecture**: Easy addition of new expert agents
 
 ## Next Steps for Development
 

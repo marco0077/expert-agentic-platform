@@ -1,6 +1,8 @@
 import { OpenAIService, LLMResponse } from '../services/OpenAIService';
 import { SYSTEM_PROMPTS } from '../data/systemPrompts';
 import { EXPERTISE_DATABASE } from '../data/expertiseDatabase';
+import { mcpSearch, SearchResult, SearchDecision } from '../utils/mcpSearch';
+import { dynamicSourceGenerator, ValidatedSource } from '../utils/dynamicSources';
 
 export interface ExpertResponse {
   content: string;
@@ -8,6 +10,8 @@ export interface ExpertResponse {
   sources?: string[];
   tokensUsed?: number;
   agentDomain: string;
+  searchEnhanced?: boolean;
+  searchReasoning?: string;
 }
 
 export abstract class ExpertAgent {
@@ -27,30 +31,56 @@ export abstract class ExpertAgent {
 
   abstract assessRelevance(query: string): Promise<number>;
   
-  async generateResponse(): Promise<ExpertResponse> {
+  async generateResponse(useSearch: boolean = true): Promise<ExpertResponse> {
     if (!this.currentQuery) {
       throw new Error('No query set for agent response generation');
     }
 
     try {
+      // Check if we should enhance response with search data using LLM decision
+      let searchContext = '';
+      let searchDecision: SearchDecision | null = null;
+      
+      if (useSearch) {
+        searchDecision = await mcpSearch.shouldSearch(this.currentQuery, this.expertise, this.name);
+        
+        if (searchDecision.shouldSearch) {
+          const searchResults = await this.performContextualSearch(this.currentQuery);
+          if (searchResults.length > 0) {
+            searchContext = mcpSearch.formatSearchContext(searchResults, this.currentQuery, searchDecision.searchType);
+            console.log(`Enhanced ${this.name} response with ${searchResults.length} search results (${searchDecision.reasoning})`);
+          }
+        }
+      }
+
       const systemPrompt = SYSTEM_PROMPTS[this.domain];
       if (!systemPrompt) {
         throw new Error(`No system prompt found for domain: ${this.domain}`);
       }
 
+      // Enhance system prompt with search context if available
+      const enhancedPrompt = searchContext 
+        ? `${systemPrompt}\n\nAdditional current context to consider in your response:\n${searchContext}`
+        : systemPrompt;
+
       const llmResponse: LLMResponse = await this.openAIService.generateResponse(
-        systemPrompt,
+        enhancedPrompt,
         this.currentQuery,
         0.7, // temperature for balanced creativity/consistency
         1500 // max tokens for detailed responses
       );
 
+      // Generate dynamic validated sources based on response content
+      const dynamicSources = await this.generateDynamicSources(llmResponse.content);
+
       return {
         content: llmResponse.content,
         confidence: this.confidence,
-        sources: this.generateSources(this.domain),
+        sources: dynamicSources,
         tokensUsed: llmResponse.tokensUsed,
-        agentDomain: this.domain
+        agentDomain: this.domain,
+        searchEnhanced: searchDecision?.shouldSearch || false,
+        searchReasoning: searchDecision?.reasoning
       };
 
     } catch (error) {
@@ -60,7 +90,8 @@ export abstract class ExpertAgent {
         confidence: 0.1,
         sources: [],
         tokensUsed: 0,
-        agentDomain: this.domain
+        agentDomain: this.domain,
+        searchEnhanced: false
       };
     }
   }
@@ -81,6 +112,15 @@ export abstract class ExpertAgent {
     this.currentQuery = query;
     this.confidence = await this.assessRelevance(query);
     return await this.generateResponse();
+  }
+
+  protected async performContextualSearch(query: string): Promise<SearchResult[]> {
+    // Get expertise-specific keywords from database
+    const expertiseData = EXPERTISE_DATABASE[this.domain];
+    const expertiseKeywords = expertiseData ? expertiseData.relevanceKeywords.slice(0, 3) : [];
+    
+    console.log(`${this.name} performing contextual search for: ${query}`);
+    return await mcpSearch.search(query, this.domain, expertiseKeywords, 5);
   }
 
   protected setCurrentQuery(query: string): void {
@@ -197,6 +237,33 @@ export abstract class ExpertAgent {
       query.toLowerCase().includes(term)
     );
     return matches.length / complexTerms.length;
+  }
+
+  async generateDynamicSources(response: string): Promise<string[]> {
+    /**
+     * Generate and validate dynamic sources based on response content only
+     * Uses LLM to suggest relevant, working URLs that support the response
+     */
+    try {
+      // Use dynamic source generator to get validated sources from response content
+      const validatedSources = await dynamicSourceGenerator.generateDynamicSources(
+        response,
+        this.domain.toLowerCase().replace(' ', '-'),
+        6
+      );
+      
+      // Format sources for display
+      const formattedSources = validatedSources.map(source => 
+        `${source.title} - ${source.url}`
+      );
+      
+      console.log(`Generated ${formattedSources.length} validated sources for ${this.name}`);
+      return formattedSources;
+      
+    } catch (error) {
+      console.error(`Dynamic source generation failed for ${this.name}:`, error);
+      return [];
+    }
   }
 
   protected generateSources(domain: string): string[] {

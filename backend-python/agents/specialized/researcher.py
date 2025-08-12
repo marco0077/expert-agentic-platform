@@ -13,32 +13,42 @@ class ResearcherAgent(BaseAgent):
             "quantitative", "experimental", "observational", "survey", "case study"
         ]
     
-    def _generate_specialized_response(self, query: str) -> str:
+    def _generate_specialized_response(self, query: str, search_context: str = "") -> str:
         query_lower = query.lower()
         
+        # Base response based on query type
+        base_response = ""
+        
         if any(term in query_lower for term in ["research", "study", "evidence"]):
-            return ("From a research methodology perspective, this requires a systematic approach "
-                   "with clear research questions, appropriate study design, and rigorous data "
-                   "collection methods. Consider the hierarchy of evidence, potential biases, "
-                   "and ensure adequate sample sizes for statistical power.")
+            base_response = ("From a research methodology perspective, this requires a systematic approach "
+                           "with clear research questions, appropriate study design, and rigorous data "
+                           "collection methods. Consider the hierarchy of evidence, potential biases, "
+                           "and ensure adequate sample sizes for statistical power.")
         
         elif any(term in query_lower for term in ["literature", "review", "sources"]):
-            return ("A comprehensive literature review should include systematic searching of "
-                   "multiple databases, critical appraisal of evidence quality, and synthesis "
-                   "of findings. Focus on peer-reviewed sources, consider publication bias, "
-                   "and evaluate the strength of evidence using established frameworks.")
+            base_response = ("A comprehensive literature review should include systematic searching of "
+                           "multiple databases, critical appraisal of evidence quality, and synthesis "
+                           "of findings. Focus on peer-reviewed sources, consider publication bias, "
+                           "and evaluate the strength of evidence using established frameworks.")
         
         elif any(term in query_lower for term in ["methodology", "design", "approach"]):
-            return ("Research design should align with your research questions and objectives. "
-                   "Consider whether quantitative, qualitative, or mixed methods are most "
-                   "appropriate. Ensure proper controls, randomization where applicable, "
-                   "and plan for potential confounding variables.")
+            base_response = ("Research design should align with your research questions and objectives. "
+                           "Consider whether quantitative, qualitative, or mixed methods are most "
+                           "appropriate. Ensure proper controls, randomization where applicable, "
+                           "and plan for potential confounding variables.")
         
         else:
-            return ("From an academic research standpoint, this topic requires systematic "
-                   "investigation with proper methodology, critical evaluation of existing "
-                   "evidence, and rigorous analysis. Follow established research protocols "
-                   "and maintain objectivity throughout the investigation.")
+            base_response = ("From an academic research standpoint, this topic requires systematic "
+                           "investigation with proper methodology, critical evaluation of existing "
+                           "evidence, and rigorous analysis. Follow established research protocols "
+                           "and maintain objectivity throughout the investigation.")
+        
+        # Enhance with search context if available
+        if search_context.strip():
+            enhanced_response = f"{base_response}\n\nRecent research indicates:\n{search_context}"
+            return enhanced_response
+        
+        return base_response
     
     def _generate_specialized_insights(self, query: str) -> List[str]:
         return [
