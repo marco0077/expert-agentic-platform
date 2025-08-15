@@ -3,10 +3,10 @@
  * Tests the unified MCP search architecture with LLM-based decisions
  */
 
-import { mcpSearch } from '../utils/mcpSearch';
-import { PsychologyAgent } from '../agents/experts/PsychologyAgent';
-import { EconomyAgent } from '../agents/experts/EconomyAgent';
-import { FinanceAgent } from '../agents/experts/FinanceAgent';
+import { mcpSearch } from '../utils/mcpSearch.js';
+import { PsychologyAgent } from '../agents/experts/PsychologyAgent.js';
+import { EconomyAgent } from '../agents/experts/EconomyAgent.js';
+import { FinanceAgent } from '../agents/experts/FinanceAgent.js';
 
 interface TestCase {
   query: string;

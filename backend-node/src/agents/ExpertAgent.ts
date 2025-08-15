@@ -1,8 +1,8 @@
-import { OpenAIService, LLMResponse } from '../services/OpenAIService';
-import { SYSTEM_PROMPTS } from '../data/systemPrompts';
-import { EXPERTISE_DATABASE } from '../data/expertiseDatabase';
-import { mcpSearch, SearchResult, SearchDecision } from '../utils/mcpSearch';
-import { dynamicSourceGenerator, ValidatedSource } from '../utils/dynamicSources';
+import { OpenAIService, LLMResponse } from '../services/OpenAIService.js';
+import { SYSTEM_PROMPTS } from '../data/systemPrompts.js';
+import { EXPERTISE_DATABASE } from '../data/expertiseDatabase.js';
+import { mcpSearch, SearchResult, SearchDecision } from '../utils/mcpSearch.js';
+import { dynamicSourceGenerator, ValidatedSource } from '../utils/dynamicSources.js';
 
 export interface ExpertResponse {
   content: string;
@@ -36,21 +36,45 @@ export abstract class ExpertAgent {
       throw new Error('No query set for agent response generation');
     }
 
+    console.log(`[${this.name}] Starting generateResponse for query: "${this.currentQuery}"`);
+    console.log(`[${this.name}] useSearch parameter: ${useSearch}`);
+
     try {
       // Check if we should enhance response with search data using LLM decision
       let searchContext = '';
       let searchDecision: SearchDecision | null = null;
       
       if (useSearch) {
-        searchDecision = await mcpSearch.shouldSearch(this.currentQuery, this.expertise, this.name);
+        console.log(`[${this.name}] Calling simplified search assessment...`);
+        const needsSearch = await mcpSearch.shouldSearchSimple(this.currentQuery, this.name, this.expertise);
         
-        if (searchDecision.shouldSearch) {
+        if (needsSearch) {
+          searchDecision = {
+            shouldSearch: true,
+            reasoning: `${this.name} determined web search needed for current data`,
+            confidence: 0.8,
+            searchType: 'fresh_data'
+          };
+          console.log(`[${this.name}] Search approved - ${searchDecision.reasoning}`);
+          console.log(`[${this.name}] Search approved, performing contextual search...`);
           const searchResults = await this.performContextualSearch(this.currentQuery);
           if (searchResults.length > 0) {
             searchContext = mcpSearch.formatSearchContext(searchResults, this.currentQuery, searchDecision.searchType);
             console.log(`Enhanced ${this.name} response with ${searchResults.length} search results (${searchDecision.reasoning})`);
+          } else {
+            console.log(`[${this.name}] No search results returned`);
           }
+        } else {
+          searchDecision = {
+            shouldSearch: false,
+            reasoning: `${this.name} determined search not needed`,
+            confidence: 0.8,
+            searchType: 'none'
+          };
+          console.log(`[${this.name}] Search not needed - ${searchDecision.reasoning}`);
         }
+      } else {
+        console.log(`[${this.name}] Search disabled by useSearch parameter`);
       }
 
       const systemPrompt = SYSTEM_PROMPTS[this.domain];
@@ -63,15 +87,28 @@ export abstract class ExpertAgent {
         ? `${systemPrompt}\n\nAdditional current context to consider in your response:\n${searchContext}`
         : systemPrompt;
 
+      // Optimize parameters based on query complexity
+      const isSimpleQuery = this.currentQuery.length < 50 && /^(what|how|when|where|who|define|explain).{1,30}\?*$/i.test(this.currentQuery);
+      const temperature = isSimpleQuery ? 0.3 : 0.7; // Lower temperature for simple queries
+      const maxTokens = isSimpleQuery ? 1000 : 5000; // Fewer tokens for simple queries
+      
+      console.log(`[${this.name}] Query optimization: simple=${isSimpleQuery}, temp=${temperature}, maxTokens=${maxTokens}`);
+      
       const llmResponse: LLMResponse = await this.openAIService.generateResponse(
         enhancedPrompt,
         this.currentQuery,
-        0.7, // temperature for balanced creativity/consistency
-        1500 // max tokens for detailed responses
+        temperature,
+        maxTokens
       );
 
-      // Generate dynamic validated sources based on response content
-      const dynamicSources = await this.generateDynamicSources(llmResponse.content);
+      // Skip source generation for empty responses or simple queries to improve performance
+      let dynamicSources: string[] = [];
+      if (llmResponse.content.trim().length > 0 && this.currentQuery.length > 20) {
+        console.log(`[${this.name}] Generating dynamic sources for detailed response`);
+        dynamicSources = await this.generateDynamicSources(llmResponse.content);
+      } else {
+        console.log(`[${this.name}] Skipping source generation for simple/empty response`);
+      }
 
       return {
         content: llmResponse.content,
@@ -110,7 +147,13 @@ export abstract class ExpertAgent {
 
   async processQuery(query: string): Promise<ExpertResponse> {
     this.currentQuery = query;
-    this.confidence = await this.assessRelevance(query);
+    
+    // Only assess relevance if confidence hasn't been set by orchestrator
+    // (LLM-based selection is more accurate than individual agent assessment)
+    if (this.confidence === 0) {
+      this.confidence = await this.assessRelevance(query);
+    }
+    
     return await this.generateResponse();
   }
 
@@ -123,8 +166,12 @@ export abstract class ExpertAgent {
     return await mcpSearch.search(query, this.domain, expertiseKeywords, 5);
   }
 
-  protected setCurrentQuery(query: string): void {
+  public setCurrentQuery(query: string): void {
     this.currentQuery = query;
+  }
+
+  public setConfidence(confidence: number): void {
+    this.confidence = confidence;
   }
 
   protected async calculateRelevance(query: string): Promise<number> {

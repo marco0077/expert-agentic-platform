@@ -1,4 +1,4 @@
-import { ExpertAgent } from '../ExpertAgent';
+import { ExpertAgent } from '../ExpertAgent.js';
 
 export class ArchitectureAgent extends ExpertAgent {
   constructor() {

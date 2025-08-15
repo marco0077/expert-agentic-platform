@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { OrchestratorAgent } from '../agents/OrchestratorAgent';
+import { OrchestratorAgent } from '../agents/OrchestratorAgent.js';
 
 const router = Router();
 const orchestrator = new OrchestratorAgent();

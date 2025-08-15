@@ -423,5 +423,51 @@ export const EXPERTISE_DATABASE: Record<string, ExpertiseDescription> = {
       interdisciplinary: 0.9
     },
     description: "Expert in philosophical reasoning and ethical analysis. Specializes in applying philosophical frameworks to complex moral and conceptual problems. Capable of providing rigorous logical analysis, ethical evaluation, and conceptual clarification across diverse domains while considering multiple perspectives and cultural contexts."
+  },
+
+  generalist: {
+    domain: "Generalist",
+    title: "Interdisciplinary Scholar & Universal Expert",
+    expertise: [
+      "Cognitive Science", "Philosophy", "Economics", "Applied Mathematics",
+      "Systems Thinking", "Interdisciplinary Research", "Knowledge Synthesis",
+      "Critical Analysis", "Innovation Strategy", "Cross-Cultural Studies"
+    ],
+    specializations: [
+      "Cross-Disciplinary Integration", "Complex Problem Solving", "Knowledge Translation",
+      "Strategic Analysis", "Innovation Methodology", "Cultural Intelligence",
+      "Educational Design", "Policy Analysis", "Future Scenario Planning",
+      "Wisdom Integration", "Pattern Recognition", "Universal Principles"
+    ],
+    methodologies: [
+      "Systems Analysis", "Comparative Analysis", "Synthesis Methodology",
+      "Design Thinking", "Critical Reasoning", "Historical Analysis",
+      "Cross-Cultural Research", "Interdisciplinary Research Design",
+      "Knowledge Mapping", "Pattern Analysis", "Holistic Assessment"
+    ],
+    applications: [
+      "Complex Problem Solving", "Strategic Consulting", "Innovation Advisory", 
+      "Educational Curriculum Design", "Policy Development", "Research Coordination",
+      "Knowledge Management", "Cultural Bridge Building", "Crisis Analysis",
+      "Future Planning", "Leadership Development", "Universal Applications"
+    ],
+    keyStrengths: [
+      "Interdisciplinary synthesis", "Universal problem-solving approach",
+      "Cultural and historical perspective", "Innovation through cross-pollination",
+      "Pattern recognition across domains", "Wisdom integration",
+      "Complex system understanding", "Knowledge translation abilities"
+    ],
+    relevanceKeywords: [
+      "interdisciplinary", "complex", "integration", "synthesis", "universal", "general",
+      "broad", "comprehensive", "holistic", "multi-perspective", "cross-domain",
+      "innovation", "strategy", "analysis", "wisdom", "knowledge", "understanding",
+      "insight", "perspective", "connection", "pattern", "system", "overview"
+    ],
+    complexity: {
+      theoretical: 0.9,
+      practical: 0.85,
+      interdisciplinary: 1.0
+    },
+    description: "Universal expert capable of integrating knowledge across all major disciplines. Specializes in synthesizing insights from multiple fields to solve complex, multifaceted problems. Possesses exceptional breadth and depth of knowledge, enabling comprehensive analysis that transcends traditional domain boundaries. Ideal for handling complex queries that require interdisciplinary thinking, innovation through cross-pollination of ideas, and wisdom that comes from understanding universal patterns and principles."
   }
 };

@@ -9,9 +9,9 @@ import { Server } from 'socket.io';
 // Configure dotenv first before importing other modules
 dotenv.config();
 
-import { chatRouter } from './routes/chat';
-import { userRouter } from './routes/user';
-import { agentsRouter } from './routes/agents';
+import { chatRouter } from './routes/chat.js';
+import { userRouter } from './routes/user.js';
+import { agentsRouter } from './routes/agents.js';
 
 const app = express();
 const server = createServer(app);
